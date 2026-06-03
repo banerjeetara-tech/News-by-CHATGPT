@@ -321,6 +321,7 @@ const state = {
   sum: load("brief.sum", { breaking:[], ai:[], ts:null, aiWritten:false }),
   kolkata: load("brief.kolkata", []),
   loadingSum: false,
+  loadingKol: false,
   speaking: false,
   query: "",
 };
@@ -701,6 +702,7 @@ function renderSummary(){
   $chips.style.display="none";
   const v = state.sumView;
   const items = v === "kolkata" ? (state.kolkata || []) : (state.sum[v] || []);
+  const busy = v === "kolkata" ? state.loadingKol : state.loadingSum;
   const head = `
     <div class="subtoggle">
       <button class="${v==="breaking"?"on":""}" data-sv="breaking">Breaking</button>
@@ -712,9 +714,9 @@ function renderSummary(){
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#B4321F" stroke-width="2"><path d="m12 3 1.9 5.8L20 9l-4.6 3.6L17 19l-5-3.5L7 19l1.6-6.4L4 9l6.1-.2z"/></svg>
         ${state.sum.aiWritten?"AI‑written digest":"Auto digest"}${state.sum.ts?" · "+timeAgo(state.sum.ts)+" ago":""}
       </span>
-      <button class="refresh" id="btnSum" ${state.loadingSum?"disabled":""}>
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="${state.loadingSum?"spin":""}"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-        ${v==="kolkata"?"Refresh Kolkata news":(state.loadingSum?"Generating…":"Refresh AI summary")}
+      <button class="refresh" id="btnSum" ${busy?"disabled":""}>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="${busy?"spin":""}"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        ${v==="kolkata"?(state.loadingKol?"Refreshing…":"Refresh Kolkata news"):(state.loadingSum?"Generating…":"Refresh AI summary")}
       </button>
     </div>
     <button class="podbtn" id="btnPod" ${items.length?"":"disabled"}>
@@ -724,7 +726,7 @@ function renderSummary(){
     </button>`;
 
   let body;
-  if(state.loadingSum && !items.length){
+  if(busy && !items.length){
     body = Array(6).fill('<div class="skel" style="height:64px"></div>').join("");
   } else if(!items.length){
     body = `<p class="note">No summary yet.<br>Tap “Refresh AI summary” to generate ${v==="ai"?"the top AI stories":v==="kolkata"?"the top Kolkata stories":"the top breaking stories"}.<br><br>${
@@ -831,6 +833,8 @@ document.getElementById("btnSettings").onclick = openSettings;
 try{ if(window.speechSynthesis){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); } }catch(e){}
 
 async function loadKolkata(){
+  if(state.loadingKol) return;
+  state.loadingKol = true; render();
   try{
     const kolFeeds = [
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata when:1d") + "&hl=en-IN&gl=IN&ceid=IN:en",
@@ -865,13 +869,28 @@ async function loadKolkata(){
       save("brief.kolkata", state.kolkata);
     }
   }catch(e){ console.warn("Kolkata refresh failed", e); }
+  state.loadingKol = false;
   render();
 }
 
 hydrateCache();
 render();
-refreshFeeds();
-loadKolkata();
+
+/* refresh feeds + Kolkata together, without piling up overlapping runs */
+let _autoRefreshing = false;
+async function autoRefresh(){
+  if(_autoRefreshing) return;
+  _autoRefreshing = true;
+  try{ await Promise.allSettled([refreshFeeds(), loadKolkata()]); }
+  finally{ _autoRefreshing = false; }
+}
+
+autoRefresh();                                  // auto-refresh on open
+setInterval(autoRefresh, 180000);               // periodic: every 3 minutes
+document.addEventListener("visibilitychange", () => {   // refresh each time the app is reopened/foregrounded
+  if(document.visibilityState === "visible") autoRefresh();
+});
+window.addEventListener("pageshow", e => { if(e.persisted) autoRefresh(); });
 </script>
 </body>
 </html>
