@@ -320,7 +320,6 @@ const state = {
   video: {},   // id -> [items]
   sum: load("brief.sum", { breaking:[], ai:[], ts:null, aiWritten:false }),
   kolkata: load("brief.kolkata", []),
-  loadingKolkata: false,
   loadingSum: false,
   speaking: false,
   query: "",
@@ -353,19 +352,21 @@ let _renderTimer;
 function scheduleRender(){ clearTimeout(_renderTimer); _renderTimer = setTimeout(() => render(), 120); }
 
 async function proxyFetch(url){
-  let lastErr;
-  for(const make of PROXIES){
-    try{
-      const ctrl = new AbortController();
-      const to = setTimeout(() => ctrl.abort(), 7000);
-      const r = await fetch(make(url), { cache:"no-store", signal:ctrl.signal });
+  // cache-bust so the proxy AND the upstream feed serve fresh content on every refresh
+  const fresh = url + (url.includes("?") ? "&" : "?") + "_=" + Date.now();
+  const attempt = make => {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 6500);
+    return fetch(make(fresh), { cache:"no-store", signal:ctrl.signal }).then(async r => {
       clearTimeout(to);
       if(!r.ok) throw new Error("HTTP "+r.status);
       const t = await r.text();
       if(t && t.length > 150) return t;
-    }catch(e){ lastErr = e; }
-  }
-  throw lastErr || new Error("all proxies failed");
+      throw new Error("empty");
+    }).catch(e => { clearTimeout(to); throw e; });
+  };
+  // race all proxies at once; first one to succeed wins (was serial = up to 21s/feed, now ~the fastest proxy)
+  return Promise.any(PROXIES.map(attempt));
 }
 
 /* RSS-to-JSON bridge: fetches a feed server-side and returns CORS-friendly JSON.
@@ -711,9 +712,9 @@ function renderSummary(){
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#B4321F" stroke-width="2"><path d="m12 3 1.9 5.8L20 9l-4.6 3.6L17 19l-5-3.5L7 19l1.6-6.4L4 9l6.1-.2z"/></svg>
         ${state.sum.aiWritten?"AI‑written digest":"Auto digest"}${state.sum.ts?" · "+timeAgo(state.sum.ts)+" ago":""}
       </span>
-      <button class="refresh" id="btnSum" ${(v==="kolkata"?state.loadingKolkata:state.loadingSum)?"disabled":""}>
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="${(v==="kolkata"?state.loadingKolkata:state.loadingSum)?"spin":""}"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-        ${v==="kolkata" ? (state.loadingKolkata?"Refreshing…":"Refresh Kolkata news") : (state.loadingSum?"Generating…":"Refresh AI summary")}
+      <button class="refresh" id="btnSum" ${state.loadingSum?"disabled":""}>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="${state.loadingSum?"spin":""}"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        ${v==="kolkata"?"Refresh Kolkata news":(state.loadingSum?"Generating…":"Refresh AI summary")}
       </button>
     </div>
     <button class="podbtn" id="btnPod" ${items.length?"":"disabled"}>
@@ -740,7 +741,7 @@ function renderSummary(){
       </div>`).join("");
   }
   $main.innerHTML = head + body;
-  document.getElementById("btnSum").onclick = (v === "kolkata") ? loadKolkata : refreshSummary;
+  document.getElementById("btnSum").onclick = () => { if(state.sumView === "kolkata") loadKolkata(); else refreshSummary(); };
   const pod = document.getElementById("btnPod");
   if(pod) pod.onclick = speakSummary;
   $main.querySelectorAll("[data-sv]").forEach(b => b.onclick = () => { stopSpeak(); state.sumView = b.dataset.sv; render(); });
@@ -830,51 +831,28 @@ document.getElementById("btnSettings").onclick = openSettings;
 try{ if(window.speechSynthesis){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); } }catch(e){}
 
 async function loadKolkata(){
-  if(state.loadingKolkata) return;
-  state.loadingKolkata = true;
-  render();
   try{
     const kolFeeds = [
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata when:1d") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata West Bengal when:2d") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("site:telegraphindia.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en",
-      "https://news.google.com/rss/search?q=" + encodeURIComponent("site:timesofindia.indiatimes.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en",
-      "https://news.google.com/rss/search?q=" + encodeURIComponent("site:hindustantimes.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en"
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("site:timesofindia.indiatimes.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en"
     ];
-    const fetchKolkataViaProxy = async (url) => {
-      const bust = (url.includes("?") ? "&" : "?") + "_=" + Date.now();
-      const tries = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(url + bust)}`,
-        `https://corsproxy.io/?url=${encodeURIComponent(url + bust)}`,
-        `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url + bust)}`
-      ];
-      for(const u of tries){
-        try{
-          const ctrl = new AbortController();
-          const to = setTimeout(() => ctrl.abort(), 8000);
-          const r = await fetch(u, {cache:"no-store", signal:ctrl.signal});
-          clearTimeout(to);
-          if(r.ok){
-            const xml = await r.text();
-            if(xml && xml.length > 150){
-              const parsed = parsePrint(xml);
-              if(parsed.length) return parsed;
-            }
-          }
-        }catch(e){}
-      }
-      return [];
-    };
-
     let items = [];
-    const results = await Promise.allSettled(kolFeeds.map(fetchKolkataViaProxy));
-    results.forEach(r => { if(r.status === "fulfilled" && r.value.length) items.push(...r.value); });
-
-    // Last-resort fallback: use already-loaded print stories that mention Kolkata, so the tab is never stale/blank.
+    for(const feed of kolFeeds){
+      try{ items.push(...parsePrint(await proxyFetch(feed))); }catch(e){}
+      if(items.length >= 15) break;
+    }
+    if(!items.length){
+      for(const feed of kolFeeds){
+        try{ items.push(...(await fetchViaRss2Json(feed))); }catch(e){}
+        if(items.length >= 15) break;
+      }
+    }
+    // fallback from already loaded print news, so Kolkata tab keeps working even if Google News blocks a proxy
     if(!items.length){
       items = Object.values(state.print).flat().filter(i => /kolkata|west bengal|bengal/i.test((i.title||"") + " " + (i.dek||"")));
     }
-
     const seen = new Set();
     items = items.sort((a,b)=>(b.ts||0)-(a.ts||0)).filter(i => {
       const k = (i.title||"").toLowerCase().replace(/\s+-\s+.*$/, "").slice(0,60);
@@ -882,18 +860,14 @@ async function loadKolkata(){
       seen.add(k);
       return true;
     });
-
     if(items.length){
       state.kolkata = items.slice(0,15).map(i=>({t:i.title,d:i.dek||"",l:i.link||""}));
       save("brief.kolkata", state.kolkata);
     }
-  }catch(e){
-    console.warn("Kolkata refresh failed", e);
-  }finally{
-    state.loadingKolkata = false;
-    render();
-  }
+  }catch(e){ console.warn("Kolkata refresh failed", e); }
+  render();
 }
+
 hydrateCache();
 render();
 refreshFeeds();
