@@ -142,8 +142,8 @@
       <button class="iconbtn" id="btnRefresh" title="Reload news">
         <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
       </button>
-      <button class="iconbtn" id="btnSettings" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <button class="iconbtn" id="btnWebSearch" title="Search News">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </button>
     </div>
   </header>
@@ -164,6 +164,10 @@
     <button data-tab="summary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 14.34A6 6 0 1 1 12 3a6 6 0 0 1 2.06 11.34M9 21h6M10 17.5h4"/><path d="m19 3 .7 2.3L22 6l-2.3.7L19 9l-.7-2.3L16 6l2.3-.7z"/></svg>
       <span>Summary</span>
+    </button>
+    <button data-tab="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <span>Search</span>
     </button>
   </nav>
 </div>
@@ -284,7 +288,7 @@ const VIDEO = [
   { id:"ddindia",   name:"DD India",            short:"DD",   color:"#7B9A8A", ytid:"UCGDQNvybfDDeGTf4GtigXaw", handle:"@DDIndia" },
   { id:"republic",  name:"Republic World",      short:"REP",  color:"#B07A5A", ytid:"UCwqusr8YDwM-3mEYTDeJHzw", handle:"@RepublicWorld" },
   { id:"firstpost", name:"Firstpost",           short:"FP",   color:"#5C8AA6", ytid:"UCz8QaiQxApLq8sLNcszYyJw", handle:"@Firstpost" },
-  { id:"abp",       name:"ABP Ananda",          short:"ABP",  color:"#B06E6E", ytid:"UCv3rFzn-GHGtqzXiaq3sWNg", handle:"@abpanandatv" },
+  { id:"abp",       name:"ABP Ananda",          short:"ABP",  color:"#B06E6E", ytid:"UCv3rFzn-GHGtqzXiaq3sWNg", handle:"@abpanandatv", forceHandle:true },
 ];
 
 /* Summary sources — all FREE, no API, no Twitter (Twitter has no reliable free feed).
@@ -325,6 +329,10 @@ const state = {
   loadingKol: false,
   speaking: false,
   query: "",
+  searchQ: "",
+  searchResults: [],
+  searchLoading: false,
+  searchError: "",
 };
 
 const $main = document.getElementById("main");
@@ -367,8 +375,14 @@ async function proxyFetch(url){
       throw new Error("empty");
     }).catch(e => { clearTimeout(to); throw e; });
   };
-  // race all proxies at once; first one to succeed wins (was serial = up to 21s/feed, now ~the fastest proxy)
-  return Promise.any(PROXIES.map(attempt));
+  // race all proxies at once; first one to succeed wins — uses manual race for iOS Safari compatibility
+  return new Promise((resolve, reject) => {
+    let settled = false, pending = PROXIES.length;
+    PROXIES.map(attempt).forEach(p => {
+      p.then(v => { if(!settled){ settled=true; resolve(v); } })
+       .catch(() => { if(--pending === 0 && !settled) reject(new Error("all proxies failed")); });
+    });
+  });
 }
 
 /* RSS-to-JSON bridge: fetches a feed server-side and returns CORS-friendly JSON.
@@ -481,26 +495,56 @@ async function loadPrint(src){
 async function loadVideo(ch){
   const tryId = async id => {
     if(!id) return [];
-    try{ return parseVideo(await proxyFetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`)); }
+    try{
+      const xml = await proxyFetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`);
+      const items = parseVideo(xml);
+      // Validate thumbnails: discard items where thumb URL is clearly broken pattern
+      return items.map(v => {
+        if(v.vid && !v.thumb) v.thumb = `https://i.ytimg.com/vi/${v.vid}/hqdefault.jpg`;
+        return v;
+      });
+    }
     catch(e){ return []; }
   };
+
+  // For forceHandle channels (like ABP Ananda): always re-resolve from handle, never use cached stale ID
+  if(ch.forceHandle && ch.handle){
+    localStorage.removeItem("brief.ytid."+ch.id);
+  }
+
   // Always prefer the hardcoded ytid — cached scraped IDs can be stale/wrong
-  // Only use cached ID if ytid is null (channels without a known ID)
   const cachedId = localStorage.getItem("brief.ytid."+ch.id);
   if(ch.ytid && cachedId && cachedId !== ch.ytid) localStorage.removeItem("brief.ytid."+ch.id);
   let id = ch.ytid || cachedId;
   let items = await tryId(id);
-  // 2) if nothing came back and no hardcoded ytid, resolve from channel handle (then cache it)
-  if(!items.length && !ch.ytid && ch.handle){
+
+  // 2) if nothing came back and no hardcoded ytid (or forceHandle), resolve from channel handle
+  if((!items.length || ch.forceHandle) && ch.handle){
     try{
       const html = await proxyFetch("https://www.youtube.com/"+ch.handle);
-      const m = html.match(/"(?:channelId|externalId)":"(UC[\w-]{22})"/) || html.match(/channel\/(UC[\w-]{22})/);
-      if(m && m[1] && m[1] !== id){
-        localStorage.setItem("brief.ytid."+ch.id, m[1]);
-        items = await tryId(m[1]);
+      // Try multiple patterns to extract channel ID
+      const patterns = [
+        /"(?:channelId|externalId)":"(UC[\w-]{22})"/,
+        /channel\/(UC[\w-]{22})/,
+        /"browseId":"(UC[\w-]{22})"/,
+        /data-channel-external-id="(UC[\w-]{22})"/
+      ];
+      let newId = null;
+      for(const p of patterns){ const m = html.match(p); if(m && m[1]){ newId = m[1]; break; } }
+      if(newId && newId !== id){
+        localStorage.setItem("brief.ytid."+ch.id, newId);
+        const fresh = await tryId(newId);
+        if(fresh.length) items = fresh;
       }
     }catch(e){}
   }
+  if(items.length){
+    items.forEach(i => { i.ch = ch.id; i.channelName = ch.name; });
+    state.video[ch.id] = items;
+    save("brief.video."+ch.id, items);
+    scheduleRender();
+  }
+}
   if(items.length){
     items.forEach(i => { i.ch = ch.id; i.channelName = ch.name; });
     state.video[ch.id] = items;
@@ -513,10 +557,16 @@ function hydrateCache(){
   PRINT.forEach(s => { const c = load("brief.print."+s.id, null); if(c) state.print[s.id] = c; });
   VIDEO.forEach(c => {
     const v = load("brief.video."+c.id, null);
-    // Always show the last-known videos so the tab is never blank if a morning refresh /
-    // CORS proxy is briefly down. A background autoRefresh() overwrites these with the
-    // newest videos as soon as a feed responds. (Fixes the "video suddenly stopped" issue.)
-    if(v && v.length) state.video[c.id] = v;
+    if(v && v.length){
+      const newest = Math.max(...v.map(i => i.ts||0));
+      // Clear cache if: no real timestamps, older than 6 hours, or any video missing a thumb (blank)
+      const hasBlank = v.some(i => !i.thumb || !i.vid);
+      if(hasBlank || (newest > 0 && Date.now() - newest > 21600000)){
+        localStorage.removeItem("brief.video."+c.id);
+      } else {
+        state.video[c.id] = v;
+      }
+    }
   });
 }
 
@@ -609,7 +659,7 @@ async function refreshSummary(){
 
 /* --- rendering --- */
 function renderChips(){
-  if(state.tab === "summary"){ $chips.style.display="none"; return; }
+  if(state.tab === "summary" || state.tab === "search"){ $chips.style.display="none"; return; }
   $chips.style.display="flex";
   const src = state.tab === "print" ? PRINT.slice() : VIDEO.slice();
   // alphabetical by name, but any source flagged end:true goes to the very end
@@ -721,9 +771,13 @@ function renderSummary(){
     </div>
     <div class="sumhead">
       <span class="lt">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#B4321F" stroke-width="2" class="${busy?"spin":""}"><path d="m12 3 1.9 5.8L20 9l-4.6 3.6L17 19l-5-3.5L7 19l1.6-6.4L4 9l6.1-.2z"/></svg>
-        ${busy?"Updating…":(state.sum.aiWritten?"AI‑written digest":"Auto digest")}${state.sum.ts?" · "+timeAgo(state.sum.ts)+" ago":""}
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#B4321F" stroke-width="2"><path d="m12 3 1.9 5.8L20 9l-4.6 3.6L17 19l-5-3.5L7 19l1.6-6.4L4 9l6.1-.2z"/></svg>
+        ${state.sum.aiWritten?"AI‑written digest":"Auto digest"}${state.sum.ts?" · "+timeAgo(state.sum.ts)+" ago":""}
       </span>
+      <button class="refresh" id="btnSum" ${busy?"disabled":""}>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="${busy?"spin":""}"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        ${v==="kolkata"?(state.loadingKol?"Refreshing…":"Refresh Kolkata news"):(state.loadingSum?"Generating…":"Refresh AI summary")}
+      </button>
     </div>
     <button class="podbtn" id="btnPod" ${items.length?"":"disabled"}>
       ${state.speaking
@@ -749,6 +803,7 @@ function renderSummary(){
       </div>`).join("");
   }
   $main.innerHTML = head + body;
+  document.getElementById("btnSum").onclick = () => { if(state.sumView === "kolkata") loadKolkata(); else refreshSummary(); };
   const pod = document.getElementById("btnPod");
   if(pod) pod.onclick = speakSummary;
   $main.querySelectorAll("[data-sv]").forEach(b => b.onclick = () => { stopSpeak(); state.sumView = b.dataset.sv; render(); });
@@ -793,46 +848,137 @@ function speakSummary(){
 }
 
 function render(){
-  // sticky chip offset
-  document.documentElement.style.setProperty("--hh", (document.querySelector("header").offsetHeight)+"px");
-  $searchbar.style.display = (state.tab === "summary") ? "none" : "block";
-  renderChips();
-  if(state.tab==="print") renderPrint();
-  else if(state.tab==="video") renderVideo();
-  else renderSummary();
-  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab===state.tab));
+  try{
+    // sticky chip offset
+    const hdr = document.querySelector("header");
+    if(hdr) document.documentElement.style.setProperty("--hh", hdr.offsetHeight+"px");
+    const isSearch = state.tab === "search";
+    if($searchbar) $searchbar.style.display = (state.tab === "summary" || isSearch) ? "none" : "block";
+    renderChips();
+    if(state.tab==="print") renderPrint();
+    else if(state.tab==="video") renderVideo();
+    else if(state.tab==="summary") renderSummary();
+    else if(state.tab==="search") renderSearchTab();
+    document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab===state.tab));
+  }catch(e){ console.warn("render error:", e); }
 }
 
-/* --- settings sheet --- */
-function openSettings(){
-  const key = localStorage.getItem("brief.key") || "";
-  const model = localStorage.getItem("brief.model") || "claude-3-5-sonnet-latest";
-  const scrim = document.createElement("div"); scrim.className="scrim";
-  scrim.innerHTML = `<div class="sheet">
-    <div class="grip"></div>
-    <h1 style="font-family:var(--serif);font-weight:600;font-size:22px;margin:0 0 4px">Settings</h1>
-    <p class="note" style="text-align:left;padding:0 0 10px">News loads free, with no API. An Anthropic API key is used <b>only</b> when you tap “Refresh AI summary”.</p>
-    <label style="font-size:12px;font-weight:700;color:var(--mute)">ANTHROPIC API KEY</label>
-    <input class="field" id="fKey" type="password" placeholder="sk-ant-..." value="${esc(key)}">
-    <label style="font-size:12px;font-weight:700;color:var(--mute);display:block;margin-top:12px">MODEL</label>
-    <input class="field" id="fModel" type="text" value="${esc(model)}">
-    <button class="pbtn" id="fSave">Save</button>
-    <button class="pbtn" id="fClear" style="background:transparent;color:var(--ink);border:1.5px solid rgba(25,21,16,.18);margin-top:8px">Remove key</button>
-  </div>`;
-  scrim.onclick = e => { if(e.target===scrim) scrim.remove(); };
-  document.body.appendChild(scrim);
-  scrim.querySelector("#fSave").onclick = () => {
-    localStorage.setItem("brief.key", scrim.querySelector("#fKey").value.trim());
-    localStorage.setItem("brief.model", scrim.querySelector("#fModel").value.trim()||"claude-3-5-sonnet-latest");
-    scrim.remove(); render();
-  };
-  scrim.querySelector("#fClear").onclick = () => { localStorage.removeItem("brief.key"); scrim.remove(); render(); };
+/* settings removed */
+
+/* --- wire up nav tabs with auto-refresh on every tab switch --- */
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  stopSpeak();
+  const prevTab = state.tab;
+  state.tab = b.dataset.tab;
+  render();
+  // Every tab switch triggers a fresh data pull in background
+  if(state.tab !== "search") autoRefresh();
+});
+document.getElementById("btnRefresh").onclick = () => autoRefresh();
+document.getElementById("btnWebSearch").onclick = () => { state.tab = "search"; render(); };
+
+/* --- Internet Search tab renderer --- */
+function renderSearchTab(){
+  $chips.style.display = "none";
+  $searchbar.style.display = "none";
+  $main.innerHTML = `
+    <div style="padding:8px 0 14px">
+      <h2 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:0 0 12px">Search News</h2>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <input id="wsq" type="search" placeholder="Type any news topic…" autocomplete="off"
+          style="flex:1;border:1.5px solid rgba(25,21,16,.18);border-radius:11px;padding:11px 13px;font-family:var(--sans);font-size:14px;background:#fff;color:var(--ink);outline:none;"
+          value="${esc(state.searchQ)}">
+        <button id="wsbtn" style="border:none;background:var(--ink);color:var(--paper);border-radius:11px;padding:0 18px;font-family:var(--sans);font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:7px;">
+          ${state.searchLoading
+            ? `<svg class="spin" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>`
+            : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`}
+          Search
+        </button>
+      </div>
+      ${state.searchError ? `<p class="note" style="color:var(--accent)">${esc(state.searchError)}</p>` : ""}
+      <div id="wsresults">
+        ${state.searchLoading
+          ? Array(4).fill('<div class="skel" style="height:80px;margin-bottom:10px"></div>').join("")
+          : state.searchResults.length
+            ? state.searchResults.map((r,i)=>`
+              <article class="pcard" data-link="${esc(r.l)}" style="animation-delay:${i*30}ms;border-left:4px solid var(--accent);background:rgba(180,50,31,.06)">
+                <div class="meta">
+                  <span class="badge" style="background:var(--accent)">${esc(r.src||"NEWS")}</span>
+                  <span class="time">${r.ts?timeAgo(r.ts)+" ago":""}</span>
+                </div>
+                <h2 class="ptitle">${esc(r.t)}</h2>
+                ${r.d?`<p class="pdek">${esc(r.d)}</p>`:""}
+              </article>`).join("")
+            : state.searchQ
+              ? `<p class="note">No results found. Try different keywords.</p>`
+              : `<p class="note">Search for any news topic — politics, sports, tech, local events — and get the latest stories from across the web.</p>`
+        }
+      </div>
+    </div>`;
+
+  const inp = document.getElementById("wsq");
+  const btn = document.getElementById("wsbtn");
+
+  inp.oninput = () => { state.searchQ = inp.value; };
+  inp.onkeydown = e => { if(e.key === "Enter") doWebSearch(); };
+  btn.onclick = doWebSearch;
+  inp.focus();
+
+  $main.querySelectorAll(".pcard[data-link]").forEach(c => c.onclick = () => {
+    const url = c.dataset.link; if(!url) return;
+    const a = Object.assign(document.createElement('a'), {href:url, target:'_blank', rel:'noopener'});
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
 }
 
-/* --- wire up --- */
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => { stopSpeak(); state.tab = b.dataset.tab; render(); autoRefresh(); });
-document.getElementById("btnRefresh").onclick = autoRefresh;
-document.getElementById("btnSettings").onclick = openSettings;
+async function doWebSearch(){
+  const q = state.searchQ.trim();
+  if(!q || state.searchLoading) return;
+  state.searchLoading = true;
+  state.searchResults = [];
+  state.searchError = "";
+  render();
+
+  try{
+    // Build a broad set of Google News RSS queries for the topic
+    const queries = [
+      `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-IN&gl=IN&ceid=IN:en`,
+      `https://news.google.com/rss/search?q=${encodeURIComponent(q+" news")}&hl=en-IN&gl=IN&ceid=IN:en`,
+      `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`,
+    ];
+    const results = await Promise.allSettled(queries.map(async url => {
+      try{ return parsePrint(await proxyFetch(url)); }
+      catch(e){ try{ return await fetchViaRss2Json(url); }catch(e2){ return []; } }
+    }));
+    let items = [];
+    results.forEach(r => { if(r.status==="fulfilled" && Array.isArray(r.value)) items.push(...r.value); });
+
+    // De-dupe and tag source from title suffix
+    const seen = new Set();
+    items = items.sort((a,b)=>(b.ts||0)-(a.ts||0)).filter(i => {
+      const k = (i.title||"").toLowerCase().slice(0,70);
+      if(!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).slice(0, 30).map(i => {
+      // Extract source from Google News title pattern "Headline - Source"
+      const srcMatch = (i.title||"").match(/[-–]\s*([\w\s\.]+)$/);
+      const src = srcMatch ? srcMatch[1].trim().slice(0,16) : "";
+      const cleanTitle = src ? i.title.replace(new RegExp("[-–]\\s*" + src.replace(/[.*+?^${}()|[\]\\]/g,"\\$&") + "$"), "").trim() : i.title;
+      return { t: cleanTitle||i.title, d: i.dek||"", l: i.link||"", ts: i.ts||0, src };
+    });
+
+    if(items.length){
+      state.searchResults = items;
+    } else {
+      state.searchError = "No recent news found for "" + q + "". Try broader keywords.";
+    }
+  }catch(e){
+    state.searchError = "Search failed. Check your connection and try again.";
+  }
+  state.searchLoading = false;
+  render();
+}
 
 /* --- boot: show cache instantly, then refresh in background --- */
 try{ if(window.speechSynthesis){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); } }catch(e){}
@@ -843,13 +989,15 @@ async function loadKolkata(){
   try{
     // Direct newspaper RSS feeds for Kolkata (most reliable — no Google News middleman)
     const directFeeds = [
-      // Telegraph India – West Bengal section
+      // Telegraph India – West Bengal & Calcutta sections
       "https://www.telegraphindia.com/west-bengal/feed",
       "https://www.telegraphindia.com/calcutta/feed",
+      "https://www.telegraphindia.com/bengal/feed",
       // The Hindu – Kolkata section
       "https://www.thehindu.com/news/cities/kolkata/feeder/default.rss",
       // Times of India – Kolkata
       "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms",
+      "https://timesofindia.indiatimes.com/city/kolkata/rssfeeds/1.cms",
       // Indian Express – Kolkata
       "https://indianexpress.com/section/cities/kolkata/feed/",
       // NDTV – Kolkata / West Bengal
@@ -869,6 +1017,8 @@ async function loadKolkata(){
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata site:indianexpress.com") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata site:ndtv.com") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata Mamata TMC BJP Bengal politics") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata site:telegraphindia.com West Bengal") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Bengal flood weather Kolkata") + "&hl=en-IN&gl=IN&ceid=IN:en",
     ];
 
     const allFeeds = [...directFeeds, ...gnFeeds];
@@ -903,7 +1053,7 @@ async function loadKolkata(){
       });
 
     if(items.length){
-      state.kolkata = items.slice(0,20).map(i => ({ t:i.title, d:i.dek||"", l:i.link||"" }));
+      state.kolkata = items.slice(0,40).map(i => ({ t:i.title, d:i.dek||"", l:i.link||"", ts:i.ts||0 }));
       save("brief.kolkata", state.kolkata);
     }
   }catch(e){ console.warn("Kolkata refresh failed", e); }
@@ -911,30 +1061,40 @@ async function loadKolkata(){
   render();
 }
 
+// Global safety net: catch any unhandled JS errors so page never goes fully blank
+window.addEventListener("error", e => { console.warn("Brief caught error:", e.message); });
+window.addEventListener("unhandledrejection", e => { e.preventDefault(); console.warn("Brief caught rejection:", e.reason); });
+
 hydrateCache();
-render();
+try{ render(); }catch(e){ console.warn("render boot error:", e); }
 
 /* Single refresh entry point: feeds + Kolkata together.
-   Runs on open, on manual refresh button, and when app returns to foreground.
-   No setInterval — no background polling. */
+   Runs on every open, every manual refresh, every tab switch, every time the page/app returns to foreground.
+   No setInterval — event-driven only, no background battery drain. */
 let _autoRefreshing = false;
 async function autoRefresh(){
   if(_autoRefreshing) return;
   _autoRefreshing = true;
-  try{
-    await refreshFeeds();        // print + video + Kolkata
-    await refreshSummary();      // rebuild Breaking / AI digest from the fresh feeds (free, no API key needed)
-  }
+  try{ await Promise.allSettled([refreshFeeds(), loadKolkata()]); }
   finally{ _autoRefreshing = false; }
 }
 
-autoRefresh();                                          // refresh on every open/load
+// Refresh on open/load
+autoRefresh();
 
-/* Also refresh when the app returns to the foreground.
-   On iOS, an installed PWA usually resumes from the background instead of doing a full
-   page reload — so this is what actually makes it "refresh every time I open the app". */
-document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") autoRefresh(); });
-window.addEventListener("pageshow", () => autoRefresh());
+// Refresh when user returns to this tab/window (desktop browser tab switch or mobile app switch)
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible") autoRefresh();
+});
+
+// Refresh when user navigates back to the page (back button, bfcache restore on iOS Safari)
+window.addEventListener("pageshow", e => {
+  if(e.persisted) autoRefresh();   // persisted = restored from bfcache
+});
+
+// Note: focus listener removed — visibilitychange + pageshow cover all real re-open cases
+// without firing on every user interaction within the page.
+
 </script>
 </body>
 </html>
