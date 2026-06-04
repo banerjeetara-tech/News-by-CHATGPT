@@ -178,8 +178,9 @@
 
 /* --- CORS proxy chain: if one is down, the next is tried --- */
 const PROXIES = [
-  u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
   u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
+  u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+  u => "https://thingproxy.freeboard.io/fetch/" + u,
   u => "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(u),
 ];
 
@@ -371,18 +372,28 @@ async function proxyFetch(url){
 }
 
 /* RSS-to-JSON bridge: fetches a feed server-side and returns CORS-friendly JSON.
-   This reliably handles Google News feeds that the raw CORS proxies often can't. */
+   Tries multiple bridge services so one going down doesn't break everything. */
 async function fetchViaRss2Json(url){
-  const api = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(url);
-  const r = await fetch(api, { cache:"no-store" });
-  if(!r.ok) throw new Error("rss2json "+r.status);
-  const j = await r.json();
-  if(j.status !== "ok" || !Array.isArray(j.items)) throw new Error("rss2json bad");
-  return j.items.map(it => {
-    let dek = strip(it.description || it.content || "");
-    if(dek.length > 180) dek = dek.slice(0,178) + "…";
-    return { title: strip(it.title), link: it.link, dek, ts: it.pubDate ? Date.parse(it.pubDate.replace(" ","T")+"Z") : 0 };
-  }).filter(x => x.title && x.link).sort((a,b)=>b.ts-a.ts).slice(0, 25);
+  const parseR2J = j => {
+    if(j.status !== "ok" || !Array.isArray(j.items)) throw new Error("bad");
+    return j.items.map(it => {
+      let dek = strip(it.description || it.content || "");
+      if(dek.length > 180) dek = dek.slice(0,178) + "…";
+      return { title: strip(it.title), link: it.link, dek, ts: it.pubDate ? Date.parse(it.pubDate.replace(" ","T")+"Z") : 0 };
+    }).filter(x => x.title && x.link).sort((a,b)=>b.ts-a.ts).slice(0, 25);
+  };
+  // Try rss2json.com
+  try{
+    const r = await fetch("https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(url), { cache:"no-store" });
+    if(r.ok){ const j = await r.json(); const items = parseR2J(j); if(items.length) return items; }
+  }catch(e){}
+  // Try via CORS proxy chain (raw XML parse fallback)
+  try{
+    const text = await proxyFetch(url);
+    const items = parsePrint(text);
+    if(items.length) return items;
+  }catch(e){}
+  throw new Error("all rss2json methods failed");
 }
 
 /* --- parsers --- */
@@ -837,23 +848,22 @@ async function loadKolkata(){
   state.loadingKol = true; render();
   try{
     const kolFeeds = [
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata when:1d") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata West Bengal when:2d") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("site:telegraphindia.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en",
       "https://news.google.com/rss/search?q=" + encodeURIComponent("site:timesofindia.indiatimes.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en"
     ];
     let items = [];
-    for(const feed of kolFeeds){
-      try{ items.push(...parsePrint(await proxyFetch(feed))); }catch(e){}
-      if(items.length >= 20) break;
-    }
-    if(!items.length){
-      for(const feed of kolFeeds){
-        try{ items.push(...(await fetchViaRss2Json(feed))); }catch(e){}
-        if(items.length >= 20) break;
-      }
-    }
-    // fallback from already loaded print news, so Kolkata tab keeps working even if Google News blocks a proxy
+    // Try all feeds in parallel via both proxy and rss2json; first results win
+    const results = await Promise.allSettled(kolFeeds.map(async feed => {
+      // Try CORS proxy first
+      try{ const r = parsePrint(await proxyFetch(feed)); if(r.length) return r; }catch(e){}
+      // Then rss2json bridge
+      return await fetchViaRss2Json(feed);
+    }));
+    results.forEach(r => { if(r.status==="fulfilled" && r.value?.length) items.push(...r.value); });
+    // fallback from already loaded print news
     if(!items.length){
       items = Object.values(state.print).flat().filter(i => /kolkata|west bengal|bengal/i.test((i.title||"") + " " + (i.dek||"")));
     }
