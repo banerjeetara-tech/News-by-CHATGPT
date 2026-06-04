@@ -721,13 +721,9 @@ function renderSummary(){
     </div>
     <div class="sumhead">
       <span class="lt">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#B4321F" stroke-width="2"><path d="m12 3 1.9 5.8L20 9l-4.6 3.6L17 19l-5-3.5L7 19l1.6-6.4L4 9l6.1-.2z"/></svg>
-        ${state.sum.aiWritten?"AI‑written digest":"Auto digest"}${state.sum.ts?" · "+timeAgo(state.sum.ts)+" ago":""}
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#B4321F" stroke-width="2" class="${busy?"spin":""}"><path d="m12 3 1.9 5.8L20 9l-4.6 3.6L17 19l-5-3.5L7 19l1.6-6.4L4 9l6.1-.2z"/></svg>
+        ${busy?"Updating…":(state.sum.aiWritten?"AI‑written digest":"Auto digest")}${state.sum.ts?" · "+timeAgo(state.sum.ts)+" ago":""}
       </span>
-      <button class="refresh" id="btnSum" ${busy?"disabled":""}>
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="${busy?"spin":""}"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-        ${v==="kolkata"?(state.loadingKol?"Refreshing…":"Refresh Kolkata news"):(state.loadingSum?"Generating…":"Refresh AI summary")}
-      </button>
     </div>
     <button class="podbtn" id="btnPod" ${items.length?"":"disabled"}>
       ${state.speaking
@@ -753,7 +749,6 @@ function renderSummary(){
       </div>`).join("");
   }
   $main.innerHTML = head + body;
-  document.getElementById("btnSum").onclick = () => { if(state.sumView === "kolkata") loadKolkata(); else refreshSummary(); };
   const pod = document.getElementById("btnPod");
   if(pod) pod.onclick = speakSummary;
   $main.querySelectorAll("[data-sv]").forEach(b => b.onclick = () => { stopSpeak(); state.sumView = b.dataset.sv; render(); });
@@ -836,7 +831,7 @@ function openSettings(){
 
 /* --- wire up --- */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { stopSpeak(); state.tab = b.dataset.tab; render(); autoRefresh(); });
-document.getElementById("btnRefresh").onclick = refreshFeeds;
+document.getElementById("btnRefresh").onclick = autoRefresh;
 document.getElementById("btnSettings").onclick = openSettings;
 
 /* --- boot: show cache instantly, then refresh in background --- */
@@ -926,7 +921,10 @@ let _autoRefreshing = false;
 async function autoRefresh(){
   if(_autoRefreshing) return;
   _autoRefreshing = true;
-  try{ await Promise.allSettled([refreshFeeds(), loadKolkata()]); }
+  try{
+    await refreshFeeds();        // print + video + Kolkata
+    await refreshSummary();      // rebuild Breaking / AI digest from the fresh feeds (free, no API key needed)
+  }
   finally{ _autoRefreshing = false; }
 }
 
