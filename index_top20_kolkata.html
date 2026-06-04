@@ -847,35 +847,51 @@ async function loadKolkata(){
   if(state.loadingKol) return;
   state.loadingKol = true; render();
   try{
+    // Wide net: multiple search angles so even if some return overlapping stories we have enough unique ones
     const kolFeeds = [
       "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata") + "&hl=en-IN&gl=IN&ceid=IN:en",
-      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata when:1d") + "&hl=en-IN&gl=IN&ceid=IN:en",
-      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata West Bengal when:2d") + "&hl=en-IN&gl=IN&ceid=IN:en",
-      "https://news.google.com/rss/search?q=" + encodeURIComponent("site:telegraphindia.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en",
-      "https://news.google.com/rss/search?q=" + encodeURIComponent("site:timesofindia.indiatimes.com Kolkata when:3d") + "&hl=en-IN&gl=IN&ceid=IN:en"
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata city news today") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("West Bengal Kolkata") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata crime politics traffic") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata development infrastructure Bengal") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata site:telegraphindia.com") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata site:timesofindia.indiatimes.com") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata site:hindustantimes.com") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata site:ndtv.com") + "&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=" + encodeURIComponent("Kolkata Mamata TMC BJP Bengal politics") + "&hl=en-IN&gl=IN&ceid=IN:en",
     ];
-    let items = [];
-    // Try all feeds in parallel via both proxy and rss2json; first results win
+
+    // For each feed: race proxy vs rss2json bridge, collect ALL results (no early stop)
     const results = await Promise.allSettled(kolFeeds.map(async feed => {
-      // Try CORS proxy first
-      try{ const r = parsePrint(await proxyFetch(feed)); if(r.length) return r; }catch(e){}
-      // Then rss2json bridge
-      return await fetchViaRss2Json(feed);
+      try{ const r = parsePrint(await proxyFetch(feed)); if(r.length >= 2) return r; }catch(e){}
+      try{ return await fetchViaRss2Json(feed); }catch(e){ return []; }
     }));
-    results.forEach(r => { if(r.status==="fulfilled" && r.value?.length) items.push(...r.value); });
-    // fallback from already loaded print news
-    if(!items.length){
-      items = Object.values(state.print).flat().filter(i => /kolkata|west bengal|bengal/i.test((i.title||"") + " " + (i.dek||"")));
+
+    let items = [];
+    results.forEach(r => { if(r.status==="fulfilled" && Array.isArray(r.value)) items.push(...r.value); });
+
+    // Fallback: filter from already-loaded print news if we still don't have enough
+    if(items.length < 10){
+      const fromPrint = Object.values(state.print).flat().filter(i =>
+        /kolkata|west bengal|bengal/i.test((i.title||"") + " " + (i.dek||""))
+      );
+      items.push(...fromPrint);
     }
+
+    // De-duplicate: use first 80 chars of title (after stripping source suffix like " - Times of India")
     const seen = new Set();
-    items = items.sort((a,b)=>(b.ts||0)-(a.ts||0)).filter(i => {
-      const k = (i.title||"").toLowerCase().replace(/\s+-\s+.*$/, "").slice(0,60);
-      if(!k || seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
+    items = items
+      .sort((a,b) => (b.ts||0) - (a.ts||0))
+      .filter(i => {
+        const raw = (i.title||"").toLowerCase().replace(/\s+[-–|]\s+[\w\s]+$/, "").trim();
+        const k = raw.slice(0, 80);
+        if(!k || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+
     if(items.length){
-      state.kolkata = items.slice(0,20).map(i=>({t:i.title,d:i.dek||"",l:i.link||""}));
+      state.kolkata = items.slice(0,20).map(i => ({ t:i.title, d:i.dek||"", l:i.link||"" }));
       save("brief.kolkata", state.kolkata);
     }
   }catch(e){ console.warn("Kolkata refresh failed", e); }
