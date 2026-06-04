@@ -142,8 +142,8 @@
       <button class="iconbtn" id="btnRefresh" title="Reload news">
         <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
       </button>
-      <button class="iconbtn" id="btnSearch" title="Search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <button class="iconbtn" id="btnSettings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
   </header>
@@ -324,27 +324,13 @@ const state = {
   loadingKol: false,
   speaking: false,
   query: "",
-  queryRaw: "",
-  searchNews: [],
-  searchVids: [],
-  searching: false,
 };
 
 const $main = document.getElementById("main");
 const $chips = document.getElementById("chips");
 const $searchbar = document.getElementById("searchbar");
 const $q = document.getElementById("q");
-$q.oninput = () => {
-  state.queryRaw = $q.value.trim();
-  state.query = state.queryRaw.toLowerCase();
-  render();
-  if(state.tab === "search"){
-    clearTimeout(_searchTimer);
-    const q = state.queryRaw;
-    if(q.length >= 2) _searchTimer = setTimeout(() => runWebSearch(q), 650);
-    else { state.searchNews = []; state.searchVids = []; }
-  }
-};
+$q.oninput = () => { state.query = $q.value.trim().toLowerCase(); render(); };
 function matchesQuery(it){
   if(!state.query) return true;
   return (it.title||"").toLowerCase().includes(state.query) || (it.dek||"").toLowerCase().includes(state.query);
@@ -487,16 +473,26 @@ async function loadVideo(ch){
     try{ return parseVideo(await proxyFetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`)); }
     catch(e){ return []; }
   };
-  // Fallback: YouTube feeds are often blocked when fetched via the CORS proxies (datacenter IPs).
-  // rss2json pulls the same feed reliably. Used only when the proxy path returns nothing.
-  const tryBridge = async id => {
+  const tryIdBridge = async id => {
     if(!id) return [];
     try{
-      const rows = await fetchViaRss2Json(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`);
-      return rows.map(it => {
-        const m = (it.link||"").match(/v=([\w-]+)/);
+      const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${id}`;
+      const api = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(url);
+      const r = await fetch(api, { cache:"no-store" });
+      if(!r.ok) throw new Error("rss2json video "+r.status);
+      const j = await r.json();
+      if(j.status !== "ok" || !Array.isArray(j.items)) throw new Error("rss2json video bad");
+      return j.items.map(it => {
+        const link = it.link || "";
+        const m = link.match(/[?&]v=([\w-]+)/) || (it.guid||"").match(/video:([\w-]+)/);
         const vid = m ? m[1] : "";
-        return { vid, title: it.title, thumb: vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "", views:"", ts: it.ts||0 };
+        return {
+          vid,
+          title: strip(it.title || ""),
+          thumb: vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "",
+          views: "",
+          ts: it.pubDate ? Date.parse(it.pubDate) : 0,
+        };
       }).filter(x => x.vid && x.title).slice(0, 15);
     }catch(e){ return []; }
   };
@@ -505,8 +501,14 @@ async function loadVideo(ch){
   const cachedId = localStorage.getItem("brief.ytid."+ch.id);
   if(ch.ytid && cachedId && cachedId !== ch.ytid) localStorage.removeItem("brief.ytid."+ch.id);
   let id = ch.ytid || cachedId;
+  if(ch.id === "abp"){
+    localStorage.removeItem("brief.video."+ch.id);
+    delete state.video[ch.id];
+    scheduleRender();
+  }
   let items = await tryId(id);
-  if(!items.length) items = await tryBridge(id);   // proxy blocked? try rss2json before giving up
+  // ABP Ananda only: if raw YouTube RSS through proxies fails, use rss2json as backup.
+  if(!items.length && ch.id === "abp") items = await tryIdBridge(id);
   // 2) if nothing came back and no hardcoded ytid, resolve from channel handle (then cache it)
   if(!items.length && !ch.ytid && ch.handle){
     try{
@@ -523,12 +525,19 @@ async function loadVideo(ch){
     state.video[ch.id] = items;
     save("brief.video."+ch.id, items);
     scheduleRender();
+  }else if(ch.id === "abp"){
+    localStorage.removeItem("brief.video."+ch.id);
+    delete state.video[ch.id];
+    scheduleRender();
   }
 }
 
 function hydrateCache(){
   PRINT.forEach(s => { const c = load("brief.print."+s.id, null); if(c) state.print[s.id] = c; });
   VIDEO.forEach(c => {
+    // ABP Ananda was showing stale localStorage videos when the YouTube RSS/proxy failed.
+    // For ABP only, always start clean and fetch fresh instead of displaying old cache.
+    if(c.id === "abp"){ localStorage.removeItem("brief.video."+c.id); return; }
     const v = load("brief.video."+c.id, null);
     if(v && v.length){
       const newest = Math.max(...v.map(i => i.ts||0));
@@ -627,7 +636,7 @@ async function refreshSummary(){
 
 /* --- rendering --- */
 function renderChips(){
-  if(state.tab === "summary" || state.tab === "search"){ $chips.style.display="none"; return; }
+  if(state.tab === "summary"){ $chips.style.display="none"; return; }
   $chips.style.display="flex";
   const src = state.tab === "print" ? PRINT.slice() : VIDEO.slice();
   // alphabetical by name, but any source flagged end:true goes to the very end
@@ -726,97 +735,6 @@ function openChannelTile(ch, secondary){
   </a>`;
 }
 
-/* --- search: combine loaded news/videos with fresh results from the internet --- */
-let _searchTimer, _searchSeq = 0;
-
-async function searchYouTube(q){
-  try{
-    const html = await proxyFetch("https://www.youtube.com/results?search_query=" + encodeURIComponent(q));
-    const out = [], seen = new Set();
-    const re = /"videoRenderer":\{"videoId":"([\w-]{11})".*?"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/g;
-    let m;
-    while((m = re.exec(html)) && out.length < 12){
-      const vid = m[1];
-      if(seen.has(vid)) continue; seen.add(vid);
-      const title = m[2].replace(/\\u([0-9a-fA-F]{4})/g, (_,h)=>String.fromCharCode(parseInt(h,16))).replace(/\\(.)/g, "$1");
-      out.push({ vid, title, thumb:`https://i.ytimg.com/vi/${vid}/hqdefault.jpg`, views:"", ts:0, ch:"_search", channelName:"YouTube" });
-    }
-    return out;
-  }catch(e){ return []; }
-}
-
-async function runWebSearch(q){
-  const seq = ++_searchSeq;
-  state.searching = true;
-  if(state.tab === "search") render();
-  // NEWS: Google News search across the whole web (last 7 days)
-  const newsUrl = "https://news.google.com/rss/search?q=" + encodeURIComponent(q + " when:7d") + "&hl=en-IN&gl=IN&ceid=IN:en";
-  let news = [];
-  try{ news = parsePrint(await proxyFetch(newsUrl)); }
-  catch(e){ try{ news = await fetchViaRss2Json(newsUrl); }catch(_){} }
-  // VIDEOS: live YouTube search (best-effort; falls back to the open-YouTube tile)
-  const vids = await searchYouTube(q);
-  if(seq !== _searchSeq) return;          // a newer query superseded this one
-  state.searchNews = news || [];
-  state.searchVids = vids || [];
-  state.searching = false;
-  if(state.tab === "search") render();
-}
-
-function searchNewsCard(a,i){
-  return `<article class="pcard" data-link="${esc(a.link)}" style="animation-delay:${i*25}ms;border-left:4px solid ${a.color};background:${a.color}12">
-    <div class="meta">
-      <span class="badge" style="background:${a.color}">${esc(a.badge)}</span>
-      <span class="time">${a.ts?timeAgo(a.ts)+" ago":""}</span>
-    </div>
-    <h2 class="ptitle">${esc(a.title)}</h2>
-    ${a.dek?`<p class="pdek">${esc(a.dek)}</p>`:""}
-  </article>`;
-}
-
-function renderSearch(){
-  const q = state.queryRaw;
-  if(!q){
-    $main.innerHTML = `<p class="note">Search across everything.<br>Type a topic to pull matching <b>news and videos together</b> — including fresh results from the internet that aren’t in your feeds yet.</p>`;
-    return;
-  }
-  const sec = t => `<div style="font-family:var(--serif);font-weight:600;font-size:15px;color:var(--ink);margin:16px 2px 8px">${t}</div>`;
-
-  // NEWS: live web results + matching loaded print, de-duped by title, newest first
-  const localNews = Object.values(state.print).flat().filter(Boolean).filter(matchesQuery)
-    .map(a => ({ title:a.title, link:a.link, dek:a.dek, ts:a.ts, badge:(PRINT.find(s=>s.id===a.src)||{}).short||"NEWS", color:colorFor(PRINT,a.src) }));
-  const webNews = (state.searchNews||[]).map(a => ({ title:a.title, link:a.link, dek:a.dek, ts:a.ts, badge:"WEB", color:"#5C6E8A" }));
-  const seenN = new Set();
-  const news = [...webNews, ...localNews].filter(a => {
-    const k = (a.title||"").toLowerCase().slice(0,55);
-    if(!a.title || !a.link || seenN.has(k)) return false; seenN.add(k); return true;
-  }).sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,30);
-
-  // VIDEOS: YouTube search results + matching loaded videos, de-duped by id
-  const localVids = Object.values(state.video).flat().filter(Boolean).filter(matchesQuery);
-  const seenV = new Set();
-  const vids = [...(state.searchVids||[]), ...localVids].filter(v => {
-    if(!v.vid || seenV.has(v.vid)) return false; seenV.add(v.vid); return true;
-  }).slice(0,24);
-
-  let html = state.searching ? `<p class="note" style="padding:8px 0">Searching the web…</p>` : "";
-  html += sec("News");
-  html += news.length ? news.map(searchNewsCard).join("") : `<p class="note" style="padding:6px 0">${state.searching?"":"No news found yet."}</p>`;
-  html += sec("Videos");
-  html += vids.length ? vids.map((v,i)=>videoCard(v,i)).join("") : "";
-  html += `<a class="openchan" href="https://www.youtube.com/results?search_query=${encodeURIComponent(q)}" target="_blank" rel="noopener">
-    <span class="lbl">See all videos for “${esc(q)}” on YouTube</span>
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#B4321F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg>
-  </a>`;
-
-  $main.innerHTML = html;
-  $main.querySelectorAll(".pcard").forEach(c => c.onclick = () => {
-    const url = c.dataset.link; if(!url) return;
-    const a = Object.assign(document.createElement('a'), {href:url, target:'_blank', rel:'noopener'});
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  });
-}
-
 function renderSummary(){
   $chips.style.display="none";
   const v = state.sumView;
@@ -851,7 +769,7 @@ function renderSummary(){
     body = `<p class="note">No summary yet.<br>Tap “Refresh AI summary” to generate ${v==="ai"?"the top AI stories":v==="kolkata"?"the top Kolkata stories":"the top breaking stories"}.<br><br>${
       localStorage.getItem("brief.key")
         ? "Your Anthropic key is saved — used only here, only to rewrite the digest."
-        : "Works free with no key — pulls breaking headlines + top AI stories from reliable feeds. Add a key below only if you want it AI‑rewritten."
+        : "Works free with no key — pulls breaking headlines + top AI stories from reliable feeds. Add a key in <b>Settings ⚙︎</b> only if you want it AI‑rewritten."
     }</p>`;
   } else {
     body = items.map((s,i)=>`
@@ -861,8 +779,7 @@ function renderSummary(){
         ${s.d?`<div class="sdesc">${esc(s.d)}</div>`:""}
       </div>`).join("");
   }
-  $main.innerHTML = head + body + `<div style="text-align:center;margin:18px 0 4px"><span id="openSet" style="font-size:12px;color:var(--mute);cursor:pointer;border-bottom:1px dotted var(--mute)">⚙︎ API key &amp; model</span></div>`;
-  const _os = document.getElementById("openSet"); if(_os) _os.onclick = openSettings;
+  $main.innerHTML = head + body;
   document.getElementById("btnSum").onclick = () => { if(state.sumView === "kolkata") loadKolkata(); else refreshSummary(); };
   const pod = document.getElementById("btnPod");
   if(pod) pod.onclick = speakSummary;
@@ -914,7 +831,6 @@ function render(){
   renderChips();
   if(state.tab==="print") renderPrint();
   else if(state.tab==="video") renderVideo();
-  else if(state.tab==="search") renderSearch();
   else renderSummary();
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab===state.tab));
 }
@@ -948,10 +864,7 @@ function openSettings(){
 /* --- wire up --- */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => { stopSpeak(); state.tab = b.dataset.tab; render(); });
 document.getElementById("btnRefresh").onclick = refreshFeeds;
-document.getElementById("btnSearch").onclick = () => {
-  state.tab = "search"; render(); $q.focus();
-  if(state.queryRaw && state.queryRaw.length >= 2) runWebSearch(state.queryRaw);
-};
+document.getElementById("btnSettings").onclick = openSettings;
 
 /* --- boot: show cache instantly, then refresh in background --- */
 try{ if(window.speechSynthesis){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); } }catch(e){}
@@ -969,12 +882,12 @@ async function loadKolkata(){
     let items = [];
     for(const feed of kolFeeds){
       try{ items.push(...parsePrint(await proxyFetch(feed))); }catch(e){}
-      if(items.length >= 15) break;
+      if(items.length >= 20) break;
     }
     if(!items.length){
       for(const feed of kolFeeds){
         try{ items.push(...(await fetchViaRss2Json(feed))); }catch(e){}
-        if(items.length >= 15) break;
+        if(items.length >= 20) break;
       }
     }
     // fallback from already loaded print news, so Kolkata tab keeps working even if Google News blocks a proxy
@@ -989,7 +902,7 @@ async function loadKolkata(){
       return true;
     });
     if(items.length){
-      state.kolkata = items.slice(0,15).map(i=>({t:i.title,d:i.dek||"",l:i.link||""}));
+      state.kolkata = items.slice(0,20).map(i=>({t:i.title,d:i.dek||"",l:i.link||""}));
       save("brief.kolkata", state.kolkata);
     }
   }catch(e){ console.warn("Kolkata refresh failed", e); }
