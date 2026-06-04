@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Brief</title>
 
 <!-- iOS / PWA: add to home screen, full screen, no browser chrome -->
@@ -135,7 +138,7 @@
   <header>
     <div>
       <div class="brand">Brief<b>.</b></div>
-      <div class="tagline">One desk · every source</div>
+      <div class="tagline">One desk · every source · build 4</div>
     </div>
     <div class="hbtns">
       <span class="live"><span class="dot"></span><span>LIVE</span></span>
@@ -164,10 +167,6 @@
     <button data-tab="summary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 14.34A6 6 0 1 1 12 3a6 6 0 0 1 2.06 11.34M9 21h6M10 17.5h4"/><path d="m19 3 .7 2.3L22 6l-2.3.7L19 9l-.7-2.3L16 6l2.3-.7z"/></svg>
       <span>Summary</span>
-    </button>
-    <button data-tab="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <span>Search</span>
     </button>
   </nav>
 </div>
@@ -499,18 +498,30 @@ async function loadPrint(src){
   }
 }
 async function loadVideo(ch){
+  // Fetch the channel feed through ALL proxies at once and merge the results.
+  // A single proxy that serves a stale/cached copy can no longer hide new uploads —
+  // any proxy that returns a fresh copy contributes its newest videos to the pool.
   const tryId = async id => {
     if(!id) return [];
-    try{
-      const xml = await proxyFetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`);
-      const items = parseVideo(xml);
-      // Validate thumbnails: discard items where thumb URL is clearly broken pattern
-      return items.map(v => {
-        if(v.vid && !v.thumb) v.thumb = `https://i.ytimg.com/vi/${v.vid}/hqdefault.jpg`;
-        return v;
-      });
-    }
-    catch(e){ return []; }
+    const feed = `https://www.youtube.com/feeds/videos.xml?channel_id=${id}&_=${Date.now()}`;
+    const texts = await Promise.allSettled(PROXIES.map(make => {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 7000);
+      return fetch(make(feed), { cache:"no-store", signal:ctrl.signal })
+        .then(r => { clearTimeout(to); if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+        .catch(e => { clearTimeout(to); throw e; });
+    }));
+    let merged = [];
+    texts.forEach(t => {
+      if(t.status === "fulfilled" && t.value && t.value.length > 150){
+        try{ merged.push(...parseVideo(t.value)); }catch(e){}
+      }
+    });
+    const seen = new Set();
+    merged = merged.filter(v => { if(!v.vid || seen.has(v.vid)) return false; seen.add(v.vid); return true; })
+                   .sort((a,b) => (b.ts||0) - (a.ts||0))
+                   .slice(0, 15);
+    return merged.map(v => { if(v.vid && !v.thumb) v.thumb = `https://i.ytimg.com/vi/${v.vid}/hqdefault.jpg`; return v; });
   };
 
   // Prefer the verified hardcoded ytid. A cached scraped id is only a fallback.
@@ -541,10 +552,19 @@ async function loadVideo(ch){
   }
   // Keep only valid, thumbnailed videos so a single bad entry can never blank a channel.
   items = (items||[]).filter(v => v.vid && v.thumb);
-  if(items.length){
-    items.forEach(i => { i.ch = ch.id; i.channelName = ch.name; });
-    state.video[ch.id] = items;
-    save("brief.video."+ch.id, items);
+
+  // Merge fresh videos with whatever we had cached, de-dupe by video id, keep the 15 newest.
+  // Result: brand-new uploads always rise to the top, old ones naturally fall off,
+  // and if a refresh fetches nothing we still keep showing the cached list (never blank).
+  const prev = state.video[ch.id] || load("brief.video."+ch.id, []) || [];
+  const byId = new Map();
+  [...items, ...prev].forEach(v => { if(v && v.vid && v.thumb && !byId.has(v.vid)) byId.set(v.vid, v); });
+  let outv = [...byId.values()].sort((a,b) => (b.ts||0) - (a.ts||0)).slice(0, 15);
+
+  if(outv.length){
+    outv.forEach(i => { i.ch = ch.id; i.channelName = ch.name; });
+    state.video[ch.id] = outv;
+    save("brief.video."+ch.id, outv);
     scheduleRender();
   }
 }
