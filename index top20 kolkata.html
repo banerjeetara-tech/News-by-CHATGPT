@@ -206,6 +206,12 @@ const PRINT = [
       "https://news.google.com/rss/search?q=when:2d%20site:business-standard.com&hl=en-IN&gl=IN&ceid=IN:en",
       "https://www.business-standard.com/rss/latest.rss",
       "https://www.business-standard.com/rss/home_page_top_stories.rss" ] },
+  { id:"bloomberg",name:"Bloomberg",       short:"BBG",   color:"#5A86A6", feeds:[
+      "https://news.google.com/rss/search?q=when:2d%20site:bloomberg.com&hl=en-US&gl=US&ceid=US:en",
+      "https://feeds.bloomberg.com/markets/news.rss",
+      "https://feeds.bloomberg.com/technology/news.rss",
+      "https://feeds.bloomberg.com/politics/news.rss",
+      "https://feeds.bloomberg.com/economics/news.rss" ] },
   { id:"bbc",     name:"BBC News",         short:"BBC",   color:"#9A5A5A", feeds:[
       "https://feeds.bbci.co.uk/news/rss.xml",
       "https://feeds.bbci.co.uk/news/world/rss.xml",
@@ -288,7 +294,7 @@ const VIDEO = [
   { id:"ddindia",   name:"DD India",            short:"DD",   color:"#7B9A8A", ytid:"UCGDQNvybfDDeGTf4GtigXaw", handle:"@DDIndia" },
   { id:"republic",  name:"Republic World",      short:"REP",  color:"#B07A5A", ytid:"UCwqusr8YDwM-3mEYTDeJHzw", handle:"@RepublicWorld" },
   { id:"firstpost", name:"Firstpost",           short:"FP",   color:"#5C8AA6", ytid:"UCz8QaiQxApLq8sLNcszYyJw", handle:"@Firstpost" },
-  { id:"abp",       name:"ABP Ananda",          short:"ABP",  color:"#B06E6E", ytid:"UCv3rFzn-GHGtqzXiaq3sWNg", handle:"@abpanandatv", forceHandle:true },
+  { id:"abp",       name:"ABP Ananda",          short:"ABP",  color:"#B06E6E", ytid:"UCv3rFzn-GHGtqzXiaq3sWNg", handle:"@abpanandatv" },
 ];
 
 /* Summary sources — all FREE, no API, no Twitter (Twitter has no reliable free feed).
@@ -452,7 +458,7 @@ function parseVideo(xml){
       views: views ? Number(views).toLocaleString("en-IN") : "",
       ts: pub ? Date.parse(pub) : 0,
     };
-  }).filter(x => x.vid && x.title).slice(0, 15);
+  }).filter(x => x.vid && x.title).sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0, 15);
 }
 
 /* --- loaders (independent; one failure never blocks the rest) --- */
@@ -507,44 +513,34 @@ async function loadVideo(ch){
     catch(e){ return []; }
   };
 
-  // For forceHandle channels (like ABP Ananda): always re-resolve from handle, never use cached stale ID
-  if(ch.forceHandle && ch.handle){
-    localStorage.removeItem("brief.ytid."+ch.id);
-  }
-
-  // Always prefer the hardcoded ytid — cached scraped IDs can be stale/wrong
+  // Prefer the verified hardcoded ytid. A cached scraped id is only a fallback.
   const cachedId = localStorage.getItem("brief.ytid."+ch.id);
   if(ch.ytid && cachedId && cachedId !== ch.ytid) localStorage.removeItem("brief.ytid."+ch.id);
   let id = ch.ytid || cachedId;
   let items = await tryId(id);
 
-  // 2) if nothing came back and no hardcoded ytid (or forceHandle), resolve from channel handle
-  if((!items.length || ch.forceHandle) && ch.handle){
+  // Fallback ONLY when the verified id returned nothing: resolve the channel's own id from its handle page.
+  // Note: we deliberately do NOT use the loose /channel\/UC.../ pattern — on a channel page that also
+  // matches recommended/related channels and would replace the correct feed with the wrong one.
+  if(!items.length && ch.handle){
     try{
       const html = await proxyFetch("https://www.youtube.com/"+ch.handle);
-      // Try multiple patterns to extract channel ID
       const patterns = [
         /"(?:channelId|externalId)":"(UC[\w-]{22})"/,
-        /channel\/(UC[\w-]{22})/,
         /"browseId":"(UC[\w-]{22})"/,
-        /data-channel-external-id="(UC[\w-]{22})"/
+        /data-channel-external-id="(UC[\w-]{22})"/,
+        /<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{22})">/
       ];
       let newId = null;
       for(const p of patterns){ const m = html.match(p); if(m && m[1]){ newId = m[1]; break; } }
       if(newId && newId !== id){
-        localStorage.setItem("brief.ytid."+ch.id, newId);
         const fresh = await tryId(newId);
-        if(fresh.length) items = fresh;
+        if(fresh.length){ items = fresh; localStorage.setItem("brief.ytid."+ch.id, newId); }
       }
     }catch(e){}
   }
-  if(items.length){
-    items.forEach(i => { i.ch = ch.id; i.channelName = ch.name; });
-    state.video[ch.id] = items;
-    save("brief.video."+ch.id, items);
-    scheduleRender();
-  }
-}
+  // Keep only valid, thumbnailed videos so a single bad entry can never blank a channel.
+  items = (items||[]).filter(v => v.vid && v.thumb);
   if(items.length){
     items.forEach(i => { i.ch = ch.id; i.channelName = ch.name; });
     state.video[ch.id] = items;
@@ -556,15 +552,15 @@ async function loadVideo(ch){
 function hydrateCache(){
   PRINT.forEach(s => { const c = load("brief.print."+s.id, null); if(c) state.print[s.id] = c; });
   VIDEO.forEach(c => {
-    const v = load("brief.video."+c.id, null);
+    let v = load("brief.video."+c.id, null);
     if(v && v.length){
-      const newest = Math.max(...v.map(i => i.ts||0));
-      // Clear cache if: no real timestamps, older than 6 hours, or any video missing a thumb (blank)
-      const hasBlank = v.some(i => !i.thumb || !i.vid);
-      if(hasBlank || (newest > 0 && Date.now() - newest > 21600000)){
-        localStorage.removeItem("brief.video."+c.id);
-      } else {
+      // Drop only the individual blank/invalid entries — never wipe the whole channel.
+      v = v.filter(i => i && i.vid && i.thumb);
+      if(v.length){
         state.video[c.id] = v;
+        save("brief.video."+c.id, v);
+      } else {
+        localStorage.removeItem("brief.video."+c.id);
       }
     }
   });
@@ -738,7 +734,8 @@ function videoCard(v,i){
   const c = colorFor(VIDEO,v.ch);
   return `<a class="vcard" href="${url}" target="_blank" rel="noopener" style="animation-delay:${i*35}ms">
     <div class="thumbwrap">
-      <img loading="lazy" src="${v.thumb}" alt="" onerror="this.style.display='none'">
+      <img loading="lazy" src="${v.thumb}" alt="" data-vid="${esc(v.vid)}" data-step="0"
+        onerror="(function(im){var v=im.getAttribute('data-vid');var s=+im.getAttribute('data-step');var f=['hqdefault','mqdefault','default'];s++;if(v&&s<f.length){im.setAttribute('data-step',s);im.src='https://i.ytimg.com/vi/'+v+'/'+f[s]+'.jpg';}else{im.style.display='none';}})(this)">
       <span class="playbtn">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="${c}" style="margin-left:3px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       </span>
@@ -792,7 +789,7 @@ function renderSummary(){
     body = `<p class="note">No summary yet.<br>Tap “Refresh AI summary” to generate ${v==="ai"?"the top AI stories":v==="kolkata"?"the top Kolkata stories":"the top breaking stories"}.<br><br>${
       localStorage.getItem("brief.key")
         ? "Your Anthropic key is saved — used only here, only to rewrite the digest."
-        : "Works free with no key — pulls breaking headlines + top AI stories from reliable feeds. Add a key in <b>Settings ⚙︎</b> only if you want it AI‑rewritten."
+        : "Works free with no key — pulls breaking headlines + top AI stories from reliable feeds."
     }</p>`;
   } else {
     body = items.map((s,i)=>`
@@ -971,7 +968,7 @@ async function doWebSearch(){
     if(items.length){
       state.searchResults = items;
     } else {
-      state.searchError = "No recent news found for "" + q + "". Try broader keywords.";
+      state.searchError = `No recent news found for "${q}". Try broader keywords.`;
     }
   }catch(e){
     state.searchError = "Search failed. Check your connection and try again.";
