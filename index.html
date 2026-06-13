@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Brief" />
 <meta name="theme-color" content="#F4EEE2" />
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%23191510'/%3E%3Ctext x='50%25' y='62%25' font-family='Georgia,serif' font-size='120' font-weight='900' fill='%23F4EEE2' text-anchor='middle'%3EB%3C/text%3E%3Ccircle cx='128' cy='126' r='9' fill='%23B4321F'/%3E%3C/svg%3E" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%23191510'/%3E%3Ctext x='50%25' y='62%25' font-family='Georgia,serif' font-size='120' font-weight='900' fill='%23F4EEE2'%3EB%3C/text%3E%3Ccircle cx='128' cy='126' r='9' fill='%23B4321F'/%3E%3C/svg%3E" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -235,6 +235,11 @@ const PRINT = [
       "https://www.thehindu.com/feeder/default.rss",
       "https://www.thehindu.com/news/national/feeder/default.rss",
       "https://news.google.com/rss/search?q=when:2d%20site:thehindu.com&hl=en-IN&gl=IN&ceid=IN:en" ] },
+  { id:"ananda",   name:"Ananda Bazar",     short:"AB",    color:"#9A6B8A", bridge:true, feeds:[
+      "https://www.anandabazar.com/feed",
+      "https://www.anandabazar.com/rss",
+      "https://news.google.com/rss/search?q=site%3Aanandabazar.com%20when%3A1d&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://www.bing.com/news/search?q=site%3Aanandabazar.com&format=rss&mkt=en-IN&setlang=en" ] },
   { id:"ie",      name:"Indian Express",   short:"IE",    color:"#7B8AA6",
     wpjson:"https://indianexpress.com/wp-json/wp/v2/posts?per_page=15&_fields=title,link,excerpt,date",
     feeds:[
@@ -370,6 +375,7 @@ function pubFromUrl(u){
       "thehindu.com":"The Hindu",
       "indianexpress.com":"Indian Express",
       "telegraphindia.com":"The Telegraph",
+      "anandabazar.com":"Ananda Bazar",
       "hr.economictimes.indiatimes.com":"ETHRWorld",
       "hrkatha.com":"HRKatha",
       "peoplematters.in":"People Matters",
@@ -979,7 +985,7 @@ function renderSummary(){
   if(busy && !items.length){
     body = Array(6).fill('<div class="skel" style="height:64px"></div>').join("");
   } else if(!items.length){
-    body = `<p class="note">No summary yet.<br>Tap “Refresh AI summary” to generate ${v==="ai"?"the top AI stories":v==="kolkata"?"the top Kolkata stories":"the top breaking stories"}.<br><br>${
+    body = `<p class="note">No summary yet.<br>Tap "Refresh AI summary" to generate ${v==="ai"?"the top AI stories":v==="kolkata"?"the top Kolkata stories":"the top breaking stories"}.<br><br>${
       localStorage.getItem("brief.key")
         ? "Your Anthropic key is saved — used only here, only to rewrite the digest."
         : "Works free with no key — pulls breaking headlines + top AI stories from reliable feeds."
