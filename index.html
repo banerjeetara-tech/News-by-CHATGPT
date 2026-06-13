@@ -187,7 +187,7 @@
    Deploy the tiny worker (code provided in chat), then paste its URL here, e.g.
      const CUSTOM_PROXY = "https://brief-proxy.YOURNAME.workers.dev/?url=";
    Leave it "" to rely only on the public proxies below. */
-const CUSTOM_PROXY = "https://newnewsdeploy.banerjee-tara.workers.dev/?url=";
+const CUSTOM_PROXY = "https://youtubenews.banerjee-tara.workers.dev/?url=";
 
 const PROXIES = [
   ...(CUSTOM_PROXY ? [u => CUSTOM_PROXY + encodeURIComponent(u)] : []),
@@ -231,10 +231,12 @@ const PRINT = [
       "https://news.google.com/rss/search?q=when:1d%20site:bbc.com&hl=en-GB&gl=GB&ceid=GB:en",
       "https://feeds.bbci.co.uk/news/rss.xml",
       "https://feeds.bbci.co.uk/news/world/rss.xml" ] },
-  { id:"hindu",   name:"The Hindu",        short:"HINDU", color:"#5E8C7B", bridge:true, feeds:[
+  { id:"hindu",   name:"The Hindu",        short:"HINDU", color:"#5E8C7B", bridge:true, merge:true, maxItemHours:24, maxCacheHours:6, clearIfNoFresh:true, feeds:[
+      "https://news.google.com/rss/search?q=site%3Athehindu.com%20when%3A6h&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://news.google.com/rss/search?q=site%3Athehindu.com%20when%3A1d&hl=en-IN&gl=IN&ceid=IN:en",
+      "https://www.bing.com/news/search?q=site%3Athehindu.com%20The%20Hindu%20latest&format=rss&mkt=en-IN&setlang=en",
       "https://www.thehindu.com/feeder/default.rss",
-      "https://www.thehindu.com/news/national/feeder/default.rss",
-      "https://news.google.com/rss/search?q=when:2d%20site:thehindu.com&hl=en-IN&gl=IN&ceid=IN:en" ] },
+      "https://www.thehindu.com/news/national/feeder/default.rss" ] },
   { id:"ie",      name:"Indian Express",   short:"IE",    color:"#7B8AA6",
     wpjson:"https://indianexpress.com/wp-json/wp/v2/posts?per_page=15&_fields=title,link,excerpt,date",
     feeds:[
@@ -248,10 +250,12 @@ const PRINT = [
       "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",
       "https://www.hindustantimes.com/feeds/rss/world-news/rssfeed.xml",
       "https://news.google.com/rss/search?q=when:2d%20site:hindustantimes.com&hl=en-IN&gl=IN&ceid=IN:en" ] },
-  { id:"nyt",     name:"New York Times",   short:"NYT",   color:"#5C5C5C", feeds:[
+  { id:"nyt",     name:"New York Times",   short:"NYT",   color:"#5C5C5C", merge:true, maxItemHours:24, maxCacheHours:6, clearIfNoFresh:true, feeds:[
+      "https://news.google.com/rss/search?q=site%3Anytimes.com%20when%3A6h&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=%22New%20York%20Times%22%20world%20politics%20business%20when%3A6h&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=site%3Anytimes.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
       "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
-      "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-      "https://news.google.com/rss/search?q=when:2d%20site:nytimes.com&hl=en-US&gl=US&ceid=US:en" ] },
+      "https://rss.nytimes.com/services/xml/rss/nyt/World.xml" ] },
   { id:"guardian",name:"The Guardian",     short:"GDN",   color:"#4E7BA6", feeds:[
       "https://www.theguardian.com/international/rss",
       "https://www.theguardian.com/world/rss",
@@ -262,12 +266,12 @@ const PRINT = [
       "https://www.hrkatha.com/feed/",
       "https://www.bing.com/news/search?q=HR%20human%20resources%20India%20workplace%20hiring%20attrition&format=rss&mkt=en-IN&setlang=en",
       "https://www.bing.com/news/search?q=talent%20management%20recruitment%20employee%20engagement%20India&format=rss&mkt=en-US&setlang=en" ] },
-  { id:"reuters", name:"Reuters",          short:"RTRS",  color:"#C2885A", merge:true, feeds:[
+  { id:"reuters", name:"Reuters",          short:"RTRS",  color:"#C2885A", merge:true, maxItemHours:24, maxCacheHours:6, clearIfNoFresh:true, feeds:[
+      "https://news.google.com/rss/search?q=site%3Areuters.com%20when%3A6h&hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/rss/search?q=Reuters%20world%20business%20markets%20when%3A6h&hl=en-US&gl=US&ceid=US:en",
       "https://news.google.com/rss/search?q=site%3Areuters.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
-      "https://news.google.com/rss/search?q=Reuters%20world%20business%20markets%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
-      "https://www.bing.com/news/search?q=site%3Areuters.com&format=rss&mkt=en-US&setlang=en",
-      "https://www.bing.com/news/search?q=Reuters%20world%20business%20markets&format=rss&mkt=en-US&setlang=en",
-      "https://www.reuters.com/my-news/feed/" ] },
+      "https://www.bing.com/news/search?q=site%3Areuters.com%20Reuters%20latest&format=rss&mkt=en-US&setlang=en",
+      "https://www.bing.com/news/search?q=Reuters%20latest%20world%20business%20markets&format=rss&mkt=en-US&setlang=en" ] },
   { id:"telegraph",name:"The Telegraph",   short:"TGPH",  color:"#6E8AA6", feeds:[
       "https://news.google.com/rss/search?q=when:1d%20site:telegraph.co.uk&hl=en-GB&gl=GB&ceid=GB:en",
       "https://www.telegraph.co.uk/rss.xml",
@@ -315,7 +319,7 @@ const VIDEO = [
   { id:"ddindia",   name:"DD India",            short:"DD",   color:"#7B9A8A", ytid:"UCGDQNvybfDDeGTf4GtigXaw", handle:"@DDIndia" },
   { id:"republic",  name:"Republic World",      short:"REP",  color:"#B07A5A", ytid:"UCwqusr8YDwM-3mEYTDeJHzw", handle:"@RepublicWorld" },
   { id:"firstpost", name:"Firstpost",           short:"FP",   color:"#5C8AA6", ytid:"UCz8QaiQxApLq8sLNcszYyJw", handle:"@Firstpost" },
-  { id:"abp",       name:"ABP Ananda",          short:"ABP",  color:"#B06E6E", ytid:"UCv3rFzn-GHGtqzXiaq3sWNg", handle:"@abpanandatv" },
+  { id:"abp",       name:"ABP Ananda",          short:"ABP",  color:"#B06E6E", ytid:"UCv3rFzn-GHGtqzXiaq3sWNg", handle:"@abpanandatv", freshProxies:true, maxItemHours:12, maxCacheHours:4 },
 ];
 
 /* Summary sources — all FREE, no API, no Twitter (Twitter has no reliable free feed).
@@ -452,6 +456,44 @@ function timeAgo(ts){
   if(h<24) return h+"h"; const d=Math.floor(h/24); return d+"d";
 }
 function colorFor(list,id){ const x=list.find(s=>s.id===id); return x?x.color:"#191510"; }
+function parseDateSafe(v){
+  if(!v) return 0;
+  const raw = String(v).trim();
+  let t = Date.parse(raw);
+  if(!Number.isFinite(t)){
+    // Some RSS-to-JSON services return "YYYY-MM-DD HH:mm:ss" without timezone. Treat it as UTC.
+    t = Date.parse(raw.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})$/, "$1T$2Z"));
+  }
+  return Number.isFinite(t) ? t : 0;
+}
+function filterFreshByHours(items, hours, requireDate){
+  if(!hours) return (items||[]).filter(Boolean);
+  const cut = Date.now() - hours*3600*1000;
+  return (items||[]).filter(i => {
+    if(!i) return false;
+    if(!i.ts) return !requireDate;
+    return i.ts >= cut;
+  });
+}
+function applyFreshPrintRules(src, items){
+  let out = (items||[]).filter(Boolean);
+  if(src && src.maxItemHours) out = filterFreshByHours(out, src.maxItemHours, true);
+  return out.sort((a,b)=>(b.ts||0)-(a.ts||0));
+}
+function applyFreshVideoRules(ch, items){
+  let out = (items||[]).filter(v => v && v.vid && v.thumb);
+  if(ch && ch.maxItemHours) out = filterFreshByHours(out, ch.maxItemHours, true);
+  return out.sort((a,b)=>(b.ts||0)-(a.ts||0));
+}
+const FRESH_FIX_VERSION = "2026-06-13-abp-hindu-reuters-nyt-v2";
+function applyFreshFixOnce(){
+  try{
+    if(localStorage.getItem("brief.freshFixVersion") !== FRESH_FIX_VERSION){
+      ["brief.print.reuters", "brief.print.nyt", "brief.print.hindu", "brief.video.abp", "brief.ytid.abp"].forEach(k => localStorage.removeItem(k));
+      localStorage.setItem("brief.freshFixVersion", FRESH_FIX_VERSION);
+    }
+  }catch(e){}
+}
 let _renderTimer;
 function scheduleRender(){ clearTimeout(_renderTimer); _renderTimer = setTimeout(() => render(), 300); }
 
@@ -494,7 +536,7 @@ async function fetchViaRss2Json(url){
     return j.items.map(it => {
       let dek = strip(it.description || it.content || "");
       if(dek.length > 180) dek = dek.slice(0,178) + "…";
-      return { title: strip(it.title), link: it.link, dek, ts: it.pubDate ? Date.parse(it.pubDate.replace(" ","T")+"Z") : 0 };
+      return { title: strip(it.title), link: it.link, dek, ts: parseDateSafe(it.pubDate) };
     }).filter(x => x.title && x.link).sort((a,b)=>b.ts-a.ts).slice(0, 25);
   };
   // Try rss2json.com
@@ -535,7 +577,7 @@ function parsePrint(xml){
     const pub = g("pubDate") || g("published") || g("updated") || g("dc:date");
     let dek = strip(gLocal("description") || gLocal("encoded") || gLocal("summary") || gLocal("content") || g("media:description"));
     if(dek.length > 180) dek = dek.slice(0,178) + "…";
-    return { title: strip(title), link, dek, ts: pub ? Date.parse(pub) : 0 };
+    return { title: strip(title), link, dek, ts: parseDateSafe(pub) };
   }).filter(x => x.title && x.link).sort((a,b)=>b.ts-a.ts).slice(0, 25);
 }
 
@@ -554,9 +596,78 @@ function parseVideo(xml){
       title: strip(g("title")),
       thumb: vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "",
       views: views ? Number(views).toLocaleString("en-IN") : "",
-      ts: pub ? Date.parse(pub) : 0,
+      ts: parseDateSafe(pub),
     };
   }).filter(x => x.vid && x.title).slice(0, 15);
+}
+
+function unescapeJsonText(raw){
+  if(!raw) return "";
+  try{ return JSON.parse('"' + String(raw).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'); }catch(e){ return String(raw); }
+}
+
+function parseYouTubeVideosPage(html){
+  const now = Date.now();
+  const seen = new Set();
+  const out = [];
+  const badTitle = /^(ABP ANANDA|ABP Ananda|Home|Videos|Shorts|Live|Play all|Popular videos|Latest|Uploads)$/i;
+  const push = (vid, title, idxHint) => {
+    title = strip(unescapeJsonText(title || ""));
+    if(!vid || seen.has(vid) || !title || title.length < 6 || badTitle.test(title)) return;
+    seen.add(vid);
+    out.push({
+      vid, title, views:"",
+      thumb:`https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+      // The /videos page is newest-first. Give these fallback items a fresh order timestamp so
+      // the app shows cards instead of falling back to only an open-channel link.
+      ts: now - (idxHint || out.length) * 60000
+    });
+  };
+
+  // YouTube's page JSON changes often. Try a few narrow patterns before the final videoId fallback.
+  const patterns = [
+    /"videoRenderer"\s*:\s*\{[\s\S]{0,3500}?"videoId"\s*:\s*"([\w-]{11})"[\s\S]{0,3500}?"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]+)"/g,
+    /"gridVideoRenderer"\s*:\s*\{[\s\S]{0,3500}?"videoId"\s*:\s*"([\w-]{11})"[\s\S]{0,3500}?"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]+)"/g,
+    /"richItemRenderer"[\s\S]{0,4500}?"videoId"\s*:\s*"([\w-]{11})"[\s\S]{0,4500}?"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]+)"/g
+  ];
+  patterns.forEach(re => {
+    let m; while((m = re.exec(html)) && out.length < 15) push(m[1], m[2]);
+  });
+
+  // Sometimes the title appears before videoId in the same renderer block.
+  if(out.length < 8){
+    const blockRe = /"(?:videoRenderer|gridVideoRenderer|richItemRenderer)"\s*:\s*\{[\s\S]{0,7000}?\}(?=,"|\}\]|\}\})/g;
+    let b;
+    while((b = blockRe.exec(html)) && out.length < 15){
+      const block = b[0];
+      const vm = block.match(/"videoId"\s*:\s*"([\w-]{11})"/);
+      const tm = block.match(/"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]+)"/) || block.match(/"simpleText"\s*:\s*"([^"]+)"/);
+      if(vm && tm) push(vm[1], tm[1]);
+    }
+  }
+
+  // Last safety: still create visible cards from discovered video IDs, instead of showing only the link tile.
+  if(out.length < 5){
+    const ids = [...html.matchAll(/"videoId"\s*:\s*"([\w-]{11})"/g)].map(m=>m[1]);
+    ids.forEach((vid, i) => { if(out.length < 15) push(vid, `ABP Ananda latest video ${i+1}`, i); });
+  }
+  return out.slice(0, 15);
+}
+
+async function loadAbpVideosPageFallback(){
+  const pages = [
+    "https://www.youtube.com/@abpanandatv/videos",
+    "https://www.youtube.com/user/abpanandatv/videos",
+    "https://www.youtube.com/channel/UCv3rFzn-GHGtqzXiaq3sWNg/videos"
+  ];
+  for(const page of pages){
+    try{
+      const html = await proxyFetch(page);
+      const vids = parseYouTubeVideosPage(html);
+      if(vids.length) return vids;
+    }catch(e){}
+  }
+  return [];
 }
 
 /* --- loaders (independent; one failure never blocks the rest) --- */
@@ -574,6 +685,11 @@ async function fetchWpJson(url){
 
 async function loadPrint(src){
   const store = items => {
+    items = applyFreshPrintRules(src, items);
+    if(!items.length){
+      if(src.clearIfNoFresh){ state.print[src.id] = []; localStorage.removeItem("brief.print."+src.id); scheduleRender(); }
+      return false;
+    }
     items.forEach(i => {
       i.src = src.id; i.sourceName = src.name;
       // Merged buckets (Markets & IPO / Sports / Movie) pool many publishers, so the generic
@@ -586,19 +702,20 @@ async function loadPrint(src){
       }
     });
     state.print[src.id] = items; save("brief.print."+src.id, items); scheduleRender();
+    return true;
   };
   // WordPress REST API: gives real excerpts when RSS is blocked
   if(src.wpjson){
-    try{ const items = await fetchWpJson(src.wpjson); if(items.length){ store(items); return; } }catch(e){}
+    try{ const items = await fetchWpJson(src.wpjson); if(items.length && store(items)){ return; } }catch(e){}
   }
   // Merged source (e.g. Markets & IPO): combine reports from ALL its feeds
   if(src.merge){
     try{
       let items = await fetchMany(src.feeds);
-      // Drop clearly-stale items (older than 5 days); keep undated ones. Newest already sorts first.
-      const cut = Date.now() - 5*24*3600*1000;
-      items = items.filter(i => !i.ts || i.ts >= cut);
-      if(items.length){ store(items); return; }
+      // Drop stale items. Reuters/NYT use a much tighter freshness window; other merged buckets keep the old 5-day window.
+      items = src.maxItemHours ? filterFreshByHours(items, src.maxItemHours, true)
+                               : filterFreshByHours(items, 5*24, false);
+      if(items.length && store(items)){ return; }
     }catch(e){}
   }
   // bridge:true -> try the RSS-to-JSON bridge first (better at pulling the brief/summary)
@@ -607,10 +724,11 @@ async function loadPrint(src){
   const order = src.bridge ? [true, false] : [false, true];
   for(const useBridge of order){
     for(const url of src.feeds){
-      try{ const items = await fetchOne(url, useBridge); if(items.length){ store(items); return; } }
+      try{ const items = await fetchOne(url, useBridge); if(items.length && store(items)){ return; } }
       catch(e){ /* try next */ }
     }
   }
+  if(src.clearIfNoFresh){ state.print[src.id] = []; localStorage.removeItem("brief.print."+src.id); scheduleRender(); }
 }
 async function loadVideo(ch){
   // Fetch the channel feed through ALL proxies at once and merge the results.
@@ -640,15 +758,21 @@ async function loadVideo(ch){
       const seen = new Set();
       return merged.filter(v => { if(!v.vid || seen.has(v.vid)) return false; seen.add(v.vid); return true; });
     };
-    // Primary: your Worker only, on both feed paths (2 light requests — the same clean request that
-    // returns fresh data in the browser). A big multi-proxy burst gets rate-limited by YouTube and
-    // drops ABP's fresh copy, leaving stale cache, so we DON'T fan out unless the Worker is empty.
-    let merged = collect(await Promise.allSettled(feeds.map(f => grab(f, PROXIES[0]))));
-    // Fallback only: if the Worker returned nothing at all, then try the other proxies.
-    if(!merged.length && PROXIES.length > 1){
+    let merged = [];
+    if(ch.freshProxies){
+      // ABP occasionally gets stuck behind a stale Worker/public-proxy cache. For this one channel,
+      // collect from every proxy and pick the newest dated videos instead of trusting the first response.
       const jobs = [];
-      feeds.forEach(f => PROXIES.slice(1).forEach(make => jobs.push(grab(f, make))));
+      feeds.forEach(f => PROXIES.forEach(make => jobs.push(grab(f, make))));
       merged = collect(await Promise.allSettled(jobs));
+    } else {
+      // Primary: your Worker only, on both feed paths. Fallback only if the Worker returned nothing.
+      merged = collect(await Promise.allSettled(feeds.map(f => grab(f, PROXIES[0]))));
+      if(!merged.length && PROXIES.length > 1){
+        const jobs = [];
+        feeds.forEach(f => PROXIES.slice(1).forEach(make => jobs.push(grab(f, make))));
+        merged = collect(await Promise.allSettled(jobs));
+      }
     }
     // Newest first by published date (YouTube's feed is not in chronological order).
     merged.sort((a,b)=>(b.ts||0)-(a.ts||0));
@@ -698,27 +822,35 @@ async function loadVideo(ch){
         const vids = j.items.map(it => {
           const m = (it.link||"").match(/[?&]v=([\w-]{6,})/) || (it.guid||"").match(/([\w-]{11})$/);
           const vid = m ? m[1] : "";
-          return { vid, title: strip(it.title||""), thumb: vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : (it.thumbnail||""), views:"", ts: it.pubDate ? Date.parse(it.pubDate.replace(" ","T")+"Z") : 0 };
+          return { vid, title: strip(it.title||""), thumb: vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : (it.thumbnail||""), views:"", ts: parseDateSafe(it.pubDate) };
         }).filter(v => v.vid && v.title).slice(0,15);
         if(vids.length){ items = vids; break; }
       }catch(e){}
     }
   }
-  // Keep only valid, thumbnailed videos so a single bad entry can never blank a channel.
-  items = (items||[]).filter(v => v.vid && v.thumb);
+  // ABP fallback: when YouTube RSS/proxies return nothing, read the channel's /videos page
+  // and build normal news/video cards from the latest visible uploads. This prevents the ABP tab
+  // from degrading into only an "open channel" link.
+  if(!items.length && ch.id === "abp"){
+    try{ items = await loadAbpVideosPageFallback(); }catch(e){}
+  }
+
+  // Keep only valid, thumbnailed, recent videos so stale ABP proxy/cache results cannot return.
+  items = applyFreshVideoRules(ch, items);
 
   // Merge fresh videos with whatever we had cached, de-dupe by video id, keep the 15 newest.
   // Fresh feed items go FIRST in YouTube's own newest-first order, so brand-new uploads and
   // live/premiere content always rise to the top even when their "published" date is stale.
   // Cached items only fill the remaining slots; if a refresh fetches nothing we keep the cache (never blank).
-  const prev = state.video[ch.id] || load("brief.video."+ch.id, []) || [];
+  const prevRaw = state.video[ch.id] || load("brief.video."+ch.id, []) || [];
+  const prev = ch.maxCacheHours ? filterFreshByHours(prevRaw, ch.maxCacheHours, true) : prevRaw;
   const byId = new Map();
   items.forEach(v => { if(v && v.vid && v.thumb && !byId.has(v.vid)) byId.set(v.vid, v); });
-  prev.forEach(v => { if(v && v.vid && v.thumb && !byId.has(v.vid)) byId.set(v.vid, v); });
-  // Sort by published date, newest first. YouTube's feed is NOT in chronological order (it can
-  // list an older clip before a brand-new live entry), so without this the top item is whatever
-  // YouTube happened to put first — which is what made ABP show a stale clip. Items with no
-  // parseable date fall to the bottom rather than wrongly sitting on top.
+  // For ABP, never let an older localStorage item outrank or re-fill a fresh result set.
+  if(!ch.freshProxies || !items.length){
+    prev.forEach(v => { if(v && v.vid && v.thumb && !byId.has(v.vid)) byId.set(v.vid, v); });
+  }
+  // Sort by published date, newest first. Items with no parseable date fall to the bottom.
   let outv = [...byId.values()].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0, 15);
 
   if(outv.length){
@@ -726,17 +858,28 @@ async function loadVideo(ch){
     state.video[ch.id] = outv;
     save("brief.video."+ch.id, outv);
     scheduleRender();
+  } else if(ch.maxCacheHours || ch.freshProxies){
+    delete state.video[ch.id];
+    localStorage.removeItem("brief.video."+ch.id);
+    scheduleRender();
   }
 }
 
 function hydrateCache(){
-  PRINT.forEach(s => { const c = load("brief.print."+s.id, null); if(c) state.print[s.id] = c; });
+  PRINT.forEach(s => {
+    let c = load("brief.print."+s.id, null);
+    if(c && c.length){
+      if(s.maxCacheHours) c = filterFreshByHours(c, s.maxCacheHours, true);
+      if(c.length){ state.print[s.id] = c.sort((a,b)=>(b.ts||0)-(a.ts||0)); save("brief.print."+s.id, state.print[s.id]); }
+      else localStorage.removeItem("brief.print."+s.id);
+    }
+  });
   VIDEO.forEach(c => {
     let v = load("brief.video."+c.id, null);
     if(v && v.length){
-      // Drop invalid entries and entries older than 24 hours. If cache is stale, a refresh will fill it anyway.
-      const cutoff = Date.now() - 24*3600*1000;
-      v = v.filter(i => i && i.vid && i.thumb && (!i.ts || i.ts >= cutoff));
+      // Drop invalid entries and entries older than the channel-specific cache window.
+      const cutoff = Date.now() - (c.maxCacheHours || 24)*3600*1000;
+      v = v.filter(i => i && i.vid && i.thumb && (c.maxCacheHours ? (i.ts && i.ts >= cutoff) : (!i.ts || i.ts >= cutoff)));
       if(v.length){
         // Always sort cache by timestamp when loading to prevent old unsorted entries
         v = v.sort((a,b)=>(b.ts||0)-(a.ts||0));
@@ -916,6 +1059,7 @@ function renderVideo(){
     if(ch.handle && !state.query) html += `<a href="https://www.youtube.com/${ch.handle}/live" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;margin:2px 0 14px;padding:13px 14px;border-radius:14px;background:${ch.color};color:#fff;font-family:var(--sans);font-weight:700;font-size:14px;text-decoration:none;letter-spacing:.01em">🔴 Watch ${esc(ch.name)} Live</a>`;
     const vids = (state.video[ch.id] || []).slice().sort((a,b)=>b.ts-a.ts).filter(matchesQuery);
     if(vids.length) html += vids.map((v,i)=>videoCard(v,i)).join("");
+    else if(ch.id === "abp") html += `<p class="note">Loading ABP Ananda latest videos… tap refresh once if the feed is still warming up.</p>`;
     else if(ch.ytid) html += `<p class="note">Couldn't pull ${esc(ch.name)}'s latest clips right now — its feed is heavy and the free proxies sometimes time out. Watch it directly below, or hit refresh.</p>` + openChannelTile(ch);
     else html += openChannelTile(ch);
   }
@@ -1259,6 +1403,7 @@ async function loadKolkata(){
 window.addEventListener("error", e => { console.warn("Brief caught error:", e.message); });
 window.addEventListener("unhandledrejection", e => { e.preventDefault(); console.warn("Brief caught rejection:", e.reason); });
 
+applyFreshFixOnce();
 hydrateCache();
 try{ render(); }catch(e){ console.warn("render boot error:", e); }
 
