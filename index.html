@@ -7,6 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Brief</title>
+<link rel="manifest" href="manifest.json">
 
 <!-- iOS / PWA: add to home screen, full screen, no browser chrome -->
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1293,6 +1294,27 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pageshow", e => { if(e.persisted) autoRefresh(false); });
 
+</script>
+<!-- install banner: shows automatically when the app can be installed -->
+<div id="pwaBar" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:99999;background:#231A15;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.25);font:14px/1.35 system-ui,-apple-system,sans-serif;align-items:center;gap:10px">
+  <span id="pwaMsg" style="flex:1">Install this app on your home screen</span>
+  <button id="pwaGo" style="border:0;border-radius:10px;padding:8px 14px;font-weight:600;background:#fff;color:#231A15">Install</button>
+  <button id="pwaNo" aria-label="Close" style="border:0;background:none;color:#fff;font-size:20px;padding:0 4px">&times;</button>
+</div>
+<script>
+(function(){
+  var bar=document.getElementById('pwaBar'),go=document.getElementById('pwaGo'),msg=document.getElementById('pwaMsg'),ev=null;
+  var standalone=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone;
+  function snoozed(){try{return +localStorage.getItem('pwaBarSnooze')>Date.now()}catch(e){return false}}
+  function show(){ if(!standalone && !snoozed()) bar.style.display='flex'; }
+  window.addEventListener('beforeinstallprompt',function(e){ e.preventDefault(); ev=e; show(); });
+  go.onclick=function(){ if(ev){ ev.prompt(); ev.userChoice.then(function(){ ev=null; bar.style.display='none'; }); } else { bar.style.display='none'; } };
+  document.getElementById('pwaNo').onclick=function(){ bar.style.display='none'; try{localStorage.setItem('pwaBarSnooze',Date.now()+3*864e5)}catch(e){} };
+  window.addEventListener('appinstalled',function(){ bar.style.display='none'; });
+  /* iPhone Safari has no install button — show the manual hint instead */
+  var ios=/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream;
+  if(ios && !standalone){ msg.textContent='Tap Share, then "Add to Home Screen"'; go.style.display='none'; setTimeout(show,1500); }
+})();
 </script>
 </body>
 </html>
